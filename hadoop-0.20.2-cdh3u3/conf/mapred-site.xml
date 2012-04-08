@@ -4,5 +4,18 @@
 <!-- Put site-specific property overrides in this file. -->
 
 <configuration>
-
+  <!--Sample mesos configuration
+  <property>
+    <name>mapred.job.tracker</name>
+    <value>localhost:54311</value>
+  </property>
+  <property>
+    <name>mapred.jobtracker.taskScheduler</name>
+    <value>org.apache.hadoop.mapred.MesosScheduler</value>
+  </property>
+  <property>
+    <name>mapred.mesos.master</name>
+    <value>localhost:5050</value>
+  </property>
+  -->
 </configuration>

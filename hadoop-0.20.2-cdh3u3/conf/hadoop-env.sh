@@ -5,8 +5,11 @@
 # set JAVA_HOME in this file, so that it is correctly defined on
 # remote nodes.
 
+export MESOS_NATIVE_LIBRARY=${HADOOP_HOME}/lib/native/Linux-amd64-64/libmesos-0.9.0.so
+
 # The java implementation to use.  Required.
 # export JAVA_HOME=/usr/lib/j2sdk1.6-sun
+export HADOOP_CLASSPATH="$HADOOP_HOME/contrib/mesos/classes:$HADOOP_CLASSPATH"
 
 # Extra Java CLASSPATH elements.  Optional.
 # export HADOOP_CLASSPATH="<extra_entries>:$HADOOP_CLASSPATH"

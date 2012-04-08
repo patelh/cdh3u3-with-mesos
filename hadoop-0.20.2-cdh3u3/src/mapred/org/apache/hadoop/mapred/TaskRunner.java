@@ -207,9 +207,14 @@ abstract class TaskRunner extends Thread {
       File[] logFiles = prepareLogFiles(taskid, t.isTaskCleanupTask());
       File stdout = logFiles[0];
       File stderr = logFiles[1];
-      tracker.getTaskTrackerInstrumentation().reportTaskLaunch(taskid, stdout,
-                 stderr);
-      
+      //tracker.getTaskTrackerInstrumentation().reportTaskLaunch(taskid, stdout,
+      //           stderr);
+      List<TaskTrackerInstrumentation> ttInstrumentations =
+       tracker.getTaskTrackerInstrumentations();
+      for (TaskTrackerInstrumentation inst: ttInstrumentations) {
+       inst.reportTaskLaunch(taskid, stdout, stderr);
+      }
+
       Map<String, String> env = new HashMap<String, String>();
       errorInfo = getVMEnvironment(errorInfo, workDir, conf, env, taskid,
                                    logSize);
@@ -220,11 +225,18 @@ abstract class TaskRunner extends Thread {
       setupCmds.add(setup);
       
       launchJvmAndWait(setupCmds, vargs, stdout, stderr, logSize, workDir);
-      tracker.getTaskTrackerInstrumentation().reportTaskEnd(t.getTaskID());
+      //tracker.getTaskTrackerInstrumentation().reportTaskEnd(t.getTaskID());
+      for (TaskTrackerInstrumentation inst: ttInstrumentations) {
+       inst.reportTaskEnd(t.getTaskID());
+      }
+
       if (exitCodeSet) {
         if (!killed && exitCode != 0) {
           if (exitCode == 65) {
-            tracker.getTaskTrackerInstrumentation().taskFailedPing(t.getTaskID());
+            //tracker.getTaskTrackerInstrumentation().taskFailedPing(t.getTaskID());
+           for (TaskTrackerInstrumentation inst: ttInstrumentations) {
+             inst.taskFailedPing(t.getTaskID());
+           }
           }
           throw new IOException("Task process exit with nonzero status of " +
               exitCode + ".");

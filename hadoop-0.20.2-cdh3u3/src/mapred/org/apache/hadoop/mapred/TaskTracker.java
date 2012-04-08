@@ -507,11 +507,18 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
   
   
     
-  private TaskTrackerInstrumentation myInstrumentation = null;
+  //private TaskTrackerInstrumentation myInstrumentation = null;
+  private List<TaskTrackerInstrumentation> instrumentations =
+    new ArrayList<TaskTrackerInstrumentation>();
 
-  public TaskTrackerInstrumentation getTaskTrackerInstrumentation() {
-    return myInstrumentation;
+
+  //public TaskTrackerInstrumentation getTaskTrackerInstrumentation() {
+  //  return myInstrumentation;
+  //}
+  public List<TaskTrackerInstrumentation> getTaskTrackerInstrumentations() {
+    return instrumentations;
   }
+
   
   /**
    * A list of tips that should be cleaned up.
@@ -879,18 +886,30 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
     //tweak the probe sample size (make it a function of numCopiers)
     probe_sample_size = this.fConf.getInt("mapred.tasktracker.events.batchsize", 500);
     
+    Class<?>[] instrumentationClasses = getInstrumentationClasses(fConf);
     try {
-      Class<? extends TaskTrackerInstrumentation> metricsInst = getInstrumentationClass(fConf);
-      java.lang.reflect.Constructor<? extends TaskTrackerInstrumentation> c =
-        metricsInst.getConstructor(new Class[] {TaskTracker.class} );
-      this.myInstrumentation = c.newInstance(this);
+      //Class<? extends TaskTrackerInstrumentation> metricsInst = getInstrumentationClass(fConf);
+      //java.lang.reflect.Constructor<? extends TaskTrackerInstrumentation> c =
+      //  metricsInst.getConstructor(new Class[] {TaskTracker.class} );
+      //this.myInstrumentation = c.newInstance(this);
+      for (Class<?> cls: instrumentationClasses) {
+       java.lang.reflect.Constructor<?> c =
+         cls.getConstructor(new Class[] {TaskTracker.class} );
+       TaskTrackerInstrumentation inst =
+         (TaskTrackerInstrumentation) c.newInstance(this);
+       instrumentations.add(inst);
+      }
+
     } catch(Exception e) {
       //Reflection can throw lots of exceptions -- handle them all by 
       //falling back on the default.
       LOG.error(
         "Failed to initialize taskTracker metrics. Falling back to default.",
         e);
-      this.myInstrumentation = new TaskTrackerMetricsInst(this);
+      //this.myInstrumentation = new TaskTrackerMetricsInst(this);
+      instrumentations.clear();
+      //instrumentations.add(TaskTrackerInstrumentation.create(this));
+      instrumentations.add(new TaskTrackerMetricsInst(this));
     }
     
     // bind address
@@ -1014,10 +1033,17 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
     return fConf.getBoolean(JobConf.MR_ACLS_ENABLED, false);
   }
 
+  /*
   public static Class<? extends TaskTrackerInstrumentation> getInstrumentationClass(
     Configuration conf) {
     return conf.getClass("mapred.tasktracker.instrumentation",
         TaskTrackerMetricsInst.class, TaskTrackerInstrumentation.class);
+  }
+  */
+
+  public static Class<?>[] getInstrumentationClasses(Configuration conf) {
+    return conf.getClasses("mapred.tasktracker.instrumentation",
+                          TaskTrackerInstrumentation.class);
   }
 
   public static void setInstrumentationClass(
@@ -1988,7 +2014,10 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
             reduceTotal--;
           }
           try {
-            myInstrumentation.completeTask(taskStatus.getTaskID());
+            //myInstrumentation.completeTask(taskStatus.getTaskID());
+            for (TaskTrackerInstrumentation inst: instrumentations) {
+              inst.completeTask(taskStatus.getTaskID());
+            }
           } catch (MetricsException me) {
             LOG.warn("Caught: " + StringUtils.stringifyException(me));
           }
@@ -2153,7 +2182,10 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
           LOG.info(tip.getTask().getTaskID() + ": " + msg);
           ReflectionUtils.logThreadInfo(LOG, "lost task", 30);
           tip.reportDiagnosticInfo(msg);
-          myInstrumentation.timedoutTask(tip.getTask().getTaskID());
+          //myInstrumentation.timedoutTask(tip.getTask().getTaskID());
+          for (TaskTrackerInstrumentation inst: instrumentations) {
+            inst.timedoutTask(tip.getTask().getTaskID());
+          }
           purgeTask(tip, true);
         }
       }
@@ -2259,6 +2291,15 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
       if (tip.getTask().isMapTask()) {
         indexCache.removeMap(tip.getTask().getTaskID().toString());
       }
+      // Report the task as killed to Instrumentation objects
+      TaskStatus status = (TaskStatus) tip.getStatus().clone();
+      TaskStatus.State state =
+        (wasFailure ? TaskStatus.State.FAILED : TaskStatus.State.KILLED);
+      status.setRunState(state);
+      for (TaskTrackerInstrumentation inst: instrumentations) {
+        inst.statusUpdate(tip.getTask(), status);
+      }
+
     }
   }
 
@@ -2916,6 +2957,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
       LOG.info("Task " + task.getTaskID() + " is done.");
       LOG.info("reported output size for " + task.getTaskID() +  "  was " + taskStatus.getOutputSize());
 
+      for (TaskTrackerInstrumentation inst: instrumentations) {
+        inst.statusUpdate(task, taskStatus);
+      }
     }
     
     public boolean wasKilled() {
@@ -3120,6 +3164,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
       } catch (IOException ie) {
       }
 
+      for (TaskTrackerInstrumentation inst: instrumentations) {
+        inst.statusUpdate(task, taskStatus);
+      }
     }
     
 
@@ -3258,6 +3305,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
       taskStatus.setFinishTime(System.currentTimeMillis());
       removeFromMemoryManager(task.getTaskID());
       releaseSlot();
+      for (TaskTrackerInstrumentation inst: instrumentations) {
+        inst.statusUpdate(task, taskStatus);
+      }
       notifyTTAboutTaskCompletion();
     }
     
@@ -3290,6 +3340,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
                              failure);
         runningTasks.put(task.getTaskID(), this);
         mapTotal++;
+        for (TaskTrackerInstrumentation inst: instrumentations) {
+          inst.statusUpdate(task, taskStatus);
+        }
       } else {
         LOG.warn("Output already reported lost:"+task.getTaskID());
       }
@@ -3473,6 +3526,9 @@ public class TaskTracker implements MRConstants, TaskUmbilicalProtocol,
         return false;
       }
       tip.reportProgress(taskStatus);
+      for (TaskTrackerInstrumentation inst: instrumentations) {
+        inst.statusUpdate(tip.getTask(), taskStatus);
+      }
       return true;
     } else {
       LOG.warn("Progress from unknown child task: "+taskid);
